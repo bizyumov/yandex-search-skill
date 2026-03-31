@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Validate SKILL frontmatter
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          text = Path("SKILL.md").read_text(encoding="utf-8")
+          if not text.startswith("---\n"):
+              raise SystemExit("SKILL.md is missing opening frontmatter delimiter")
+          parts = text.split("---\n", 2)
+          if len(parts) < 3:
+              raise SystemExit("SKILL.md is missing closing frontmatter delimiter")
+          frontmatter = parts[1]
+          keys = []
+          for line in frontmatter.splitlines():
+              if not line.strip():
+                  continue
+              if line.startswith((" ", "\t")):
+                  raise SystemExit("Frontmatter must remain single-line per key")
+              match = re.match(r"^([A-Za-z0-9_-]+):", line)
+              if not match:
+                  raise SystemExit(f"Invalid frontmatter line: {line}")
+              keys.append(match.group(1))
+          allowed = {"name", "description", "license", "metadata"}
+          unexpected = set(keys) - allowed
+          missing = {"name", "description"} - set(keys)
+          if unexpected:
+              raise SystemExit(f"Unexpected frontmatter keys: {sorted(unexpected)}")
+          if missing:
+              raise SystemExit(f"Missing frontmatter keys: {sorted(missing)}")
+          print("SKILL.md frontmatter OK")
+          PY
+      - name: CLI help smoke test
+        run: python scripts/search.py --help
+      - name: Run tests
+        run: python scripts/test_search.py
+
