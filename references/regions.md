@@ -2,6 +2,9 @@
 
 Use these IDs with `--region`. Pass as numeric value — the script converts to string for API v2.
 
+Original documentation:
+- https://aistudio.yandex.ru/docs/ru/search-api/reference/regions.html
+
 ## Россия — Федеральные округа и области
 
 ### Центральный ФО

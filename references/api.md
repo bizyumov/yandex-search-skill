@@ -2,6 +2,11 @@
 
 This skill uses **Yandex Cloud Search API v2**, not the legacy Yandex XML search endpoint.
 
+Original documentation:
+- https://aistudio.yandex.ru/docs/ru/search-api/concepts/index.html
+- https://aistudio.yandex.ru/docs/ru/search-api/api-ref/
+- https://aistudio.yandex.ru/docs/ru/search-api/reference/regions.html
+
 ## Required Credentials
 
 - `YANDEX_SEARCH_API_KEY`
@@ -85,4 +90,3 @@ CLI JSON output maps `content` to `snippet`.
 - API errors:
   - rerun with `--verbose`
   - verify the service account role and billing state in Yandex Cloud
-
