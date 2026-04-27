@@ -88,7 +88,7 @@ async def _search_api(
                 "response_format": "FORMAT_XML",
             }
             if region:
-                body["region"] = region
+                body["region"] = str(region)
 
             async with session.post(f"{search_api_base}/v2/web/searchAsync", json=body) as resp:
                 if resp.status != 200:
