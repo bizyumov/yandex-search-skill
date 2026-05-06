@@ -2,7 +2,7 @@
 
 Standalone OpenClaw skill for web search via Yandex Cloud Search API v2.
 
-This repo contains a single self-contained skill named `yandex-search`. It was split out of the broader `yandex-skills` pack so search can be versioned, installed, and tested independently.
+This repo contains a single self-contained skill named `yandex-search`. It was split out of the broader `yandex-office` pack so search can be versioned, installed, and tested independently.
 
 ## Contents
 
@@ -109,4 +109,3 @@ The repo CI checks:
 ## Source Split
 
 The original monorepo-style Yandex pack now treats search as external. Human-facing migration notes in the old repo point here.
-
