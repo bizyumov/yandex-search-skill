@@ -68,6 +68,8 @@ Regional search:
 python3 scripts/search.py "новости ИИ" --region 213 --type SEARCH_TYPE_RU
 ```
 
+The CLI exits non-zero for API submission, polling, and completed-operation failures. Error output is sanitized and does not include response bodies or credentials. A successful search with no matches exits with status 0 and returns the normal empty-result output.
+
 ## Python API
 
 ```python

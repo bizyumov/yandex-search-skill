@@ -1,0 +1,37 @@
+{
+  "task_id": "YSS-001",
+  "issue": 3,
+  "verdict": "PASS",
+  "acceptance_criteria": {
+    "AC1": "PASS",
+    "AC2": "PASS",
+    "AC3": "PASS",
+    "AC4": "PASS",
+    "AC5": "PASS",
+    "AC6": "PASS",
+    "AC7": "PASS",
+    "AC8": "PASS",
+    "AC9": "PASS"
+  },
+  "verification": {
+    "compile_exit_status": 0,
+    "pre_fix_test_exit_status": 1,
+    "pre_fix_tests": {
+      "passed": 11,
+      "failed": 5,
+      "total": 16
+    },
+    "post_fix_test_exit_status": 0,
+    "post_fix_tests": {
+      "passed": 16,
+      "failed": 0,
+      "total": 16
+    },
+    "diff_check_exit_status": 0
+  },
+  "raw_artifacts": [
+    "raw/red-test.txt",
+    "raw/green-test.txt",
+    "raw/search-fix.patch"
+  ]
+}

@@ -80,6 +80,13 @@ CLI JSON output maps `content` to `snippet`.
 
 ## Troubleshooting
 
+The CLI distinguishes empty results from API failures:
+
+- Successful search with no matches: exit status 0 and an empty result set.
+- API submission, polling, or operation failure: non-zero exit status and a sanitized `Search error` message on stderr.
+
+Error messages include the failed stage and HTTP status where available, but omit response bodies, authorization headers, API keys, folder identifiers, and operation error payloads.
+
 - Missing credentials:
   - verify `YANDEX_SEARCH_API_KEY`
   - verify `YANDEX_CLOUD_FOLDER_ID`
@@ -90,3 +97,4 @@ CLI JSON output maps `content` to `snippet`.
 - API errors:
   - rerun with `--verbose`
   - verify the service account role and billing state in Yandex Cloud
+  - do not report the failure as `No results`
