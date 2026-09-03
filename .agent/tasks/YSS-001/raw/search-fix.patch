@@ -1,0 +1,74 @@
+diff --git a/scripts/search.py b/scripts/search.py
+index d7bef6b..7b9beb1 100755
+--- a/scripts/search.py
++++ b/scripts/search.py
+@@ -37,6 +37,10 @@ DEFAULT_SEARCH_API_BASE = "https://searchapi.api.cloud.yandex.net"
+ DEFAULT_OPERATIONS_API_BASE = "https://operation.api.cloud.yandex.net"
+
+
++class YandexSearchAPIError(RuntimeError):
++    """A sanitized Yandex Search API failure safe to show to CLI users."""
++
++
+ def _load_api_bases() -> tuple[str, str]:
+     return (
+         os.getenv("YANDEX_SEARCH_API_BASE", DEFAULT_SEARCH_API_BASE),
+@@ -92,25 +96,52 @@ async def _search_api(
+
+             async with session.post(f"{search_api_base}/v2/web/searchAsync", json=body) as resp:
+                 if resp.status != 200:
+-                    error = await resp.text()
+-                    logger.error("Request error: %s - %s", resp.status, error)
+-                    continue
++                    await resp.read()
++                    raise YandexSearchAPIError(
++                        f"Yandex Search request failed with HTTP {resp.status}"
++                    )
+                 operations.append((await resp.json())["id"])
+
+         xml_results = []
+         for op_id in operations:
++            completed = False
++            last_http_status = None
+             for _attempt in range(10):
+                 async with session.get(f"{operations_api_base}/operations/{op_id}") as resp:
+                     if resp.status != 200:
++                        last_http_status = resp.status
++                        await resp.read()
+                         await asyncio.sleep(1)
+                         continue
++                    last_http_status = None
+                     operation = await resp.json()
+                     if operation.get("done"):
+-                        xml_results.append(
+-                            base64.b64decode(operation["response"]["rawData"]).decode("utf-8")
+-                        )
++                        if operation.get("error"):
++                            raise YandexSearchAPIError("Yandex Search operation failed")
++                        response = operation.get("response")
++                        raw_data = response.get("rawData") if isinstance(response, dict) else None
++                        if not raw_data:
++                            raise YandexSearchAPIError(
++                                "Yandex Search operation returned no response payload"
++                            )
++                        try:
++                            xml_results.append(base64.b64decode(raw_data).decode("utf-8"))
++                        except (ValueError, UnicodeDecodeError) as exc:
++                            raise YandexSearchAPIError(
++                                "Yandex Search operation returned an invalid response payload"
++                            ) from exc
++                        completed = True
+                         break
+                 await asyncio.sleep(1)
++            if not completed:
++                if last_http_status is not None:
++                    raise YandexSearchAPIError(
++                        "Yandex Search operation polling failed after 10 attempts "
++                        f"(last HTTP {last_http_status})"
++                    )
++                raise YandexSearchAPIError(
++                    "Yandex Search operation did not complete after 10 attempts"
++                )
+
+         parsed = []
+         for xml in xml_results:

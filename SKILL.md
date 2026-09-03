@@ -53,11 +53,14 @@ Preserved public functions:
 
 They return a list of result dictionaries with `title`, `url`, `domain`, `content`, `lang`, and `modtime`.
 
+API and operation failures raise `YandexSearchAPIError`. The CLI reports these failures on stderr and exits non-zero. An empty list with exit status 0 means the API completed successfully but returned no matching results.
+
 ## Working Style
 
 Prefer `--format json` if another tool or script will consume the results.
 Prefer `--format text` for quick human-readable summaries.
 If the user asks for a region-specific search, use the `--region` flag instead of baking the region into the query text.
+Never treat a non-zero exit status as an empty search result. Diagnose the API failure before changing the query or using a fallback.
 
 ## References
 
