@@ -53,6 +53,28 @@ Preserved public functions:
 
 They return a list of result dictionaries with `title`, `url`, `domain`, `content`, `lang`, and `modtime`.
 
+## HTTP 429 Recovery and Errors
+
+The client submits each page to the asynchronous API first. If submission returns
+HTTP 429, it tries the synchronous API once with the same parameters and credentials.
+A successful fallback returns ordinary search results without polling an operation.
+Both Python entry points use this policy; `search()` being a synchronous Python
+wrapper does not mean that it starts with the synchronous HTTP endpoint.
+
+If fallback fails, Python callers receive `SearchError` (a `RuntimeError`), and the
+CLI exits non-zero with the outcomes of both attempts on stderr. Failed fallback
+responses are not reported as successful empty results. The diagnostic contains
+the actual synchronous HTTP status or a sanitized transport/response error, not
+raw service bodies, credentials, troubleshooting links, or a guessed cause.
+
+If both attempts fail, check these separately:
+
+- Service status: https://center.yandex.cloud/statusboard
+- Billing and balance: https://center.yandex.cloud/billing/
+
+A service incident or account/balance problem is a possible troubleshooting path,
+not a diagnosis established by HTTP 429. See `references/api.md` for endpoint details.
+
 ## Working Style
 
 Prefer `--format json` if another tool or script will consume the results.

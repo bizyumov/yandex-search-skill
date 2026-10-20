@@ -17,7 +17,8 @@ yandex-search-skill/
 │   └── regions.md
 └── scripts/
     ├── search.py
-    └── test_search.py
+    ├── test_search.py
+    └── test_fallback.py
 ```
 
 ## Requirements
@@ -97,6 +98,18 @@ python3 scripts/test_search.py
 ```
 
 The live API test is automatically skipped unless `YANDEX_SEARCH_API_KEY` and `YANDEX_CLOUD_FOLDER_ID` are set.
+
+The same command also runs deterministic HTTP integration tests against a local
+server, without live credentials. These cover async HTTP 429 recovery through the
+synchronous endpoint, unchanged search parameters, mixed-page ordering, malformed
+responses, sanitized failures, and CLI exit codes. Run only this suite with:
+
+```bash
+python3 -m unittest discover -s scripts -p test_fallback.py -v
+```
+
+Fallback policy and troubleshooting links are documented in `SKILL.md` and
+`references/api.md`.
 
 ## Validation
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+import unittest
 from pathlib import Path
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -212,7 +213,9 @@ def run_all() -> bool:
             failed += 1
 
     print(f"\nResults: {passed} passed, {failed} failed, {passed + failed} total")
-    return failed == 0
+    suite = unittest.defaultTestLoader.discover(str(SCRIPT_DIR), pattern="test_fallback.py")
+    fallback_result = unittest.TextTestRunner(verbosity=2).run(suite)
+    return failed == 0 and fallback_result.wasSuccessful()
 
 
 if __name__ == "__main__":
