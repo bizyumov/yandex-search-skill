@@ -1,0 +1,52 @@
+XML parse error: syntax error: line 1, column 0
+Request error: 403 - {"message": "denied sensitive-resource-id"}
+
+[test] test_clean_text
+  PASS
+
+[test] test_parse_xml_results
+  PASS
+
+[test] test_parse_xml_invalid
+  PASS
+
+[test] test_optimize_results
+  PASS
+
+[test] test_format_results_text
+  PASS
+
+[test] test_format_results_empty
+  PASS
+
+[test] test_format_output_json
+  PASS
+
+[test] test_submit_http_error_is_raised_and_sanitized
+  FAIL: Expected a Yandex Search API error
+
+[test] test_poll_http_error_is_raised_after_retries
+  FAIL: Expected a Yandex Search API error
+
+[test] test_completed_operation_error_is_raised_and_sanitized
+  FAIL:
+
+[test] test_pending_operation_times_out
+  FAIL: Expected a Yandex Search API error
+
+[test] test_successful_empty_result_remains_successful
+  PASS
+
+[test] test_cli_api_error_exits_nonzero_without_empty_result_message
+  FAIL:
+
+[test] test_live_search
+  PASS
+
+[test] test_cli_help
+  PASS
+
+[test] test_cli_missing_env
+  PASS
+
+Results: 11 passed, 5 failed, 16 total

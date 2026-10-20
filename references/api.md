@@ -64,8 +64,24 @@ Yandex Search failed: asynchronous submission returned HTTP 429; synchronous fal
 ```
 
 This diagnostic does not include raw error bodies, credentials, links, or an
-inferred cause. A valid empty fallback response remains successful. Other
-asynchronous-operation polling/error handling is unchanged by this fallback.
+inferred cause. A valid empty fallback response remains successful.
+
+## Operation Polling Errors
+
+The polling budget remains ten attempts with the existing retry timing. Transient
+HTTP errors may still recover within that budget. Exhaustion raises `SearchError`,
+including the last HTTP status if the final attempt failed at HTTP level; a final
+successful-but-pending reply is reported as incomplete, not as a stale HTTP error.
+
+Completed-operation errors, missing payloads, malformed operation JSON, and invalid
+base64/UTF-8/search XML also raise `SearchError`. Completed payloads reuse the
+fallback's existing validation and result parser. Error diagnostics omit service
+bodies, credentials, folder/operation identifiers, and tracebacks. The CLI exits 1
+without printing partial successful results if any requested page fails. A valid
+completed response with zero matches remains successful.
+
+The submission HTTP 429 fallback policy above is unchanged. A polling HTTP 429
+is retried as a polling failure, not submitted again through the synchronous API.
 
 ## Supported Search Parameters
 

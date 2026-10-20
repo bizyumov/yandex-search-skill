@@ -18,7 +18,8 @@ yandex-search-skill/
 └── scripts/
     ├── search.py
     ├── test_search.py
-    └── test_fallback.py
+    ├── test_fallback.py
+    └── test_operations.py
 ```
 
 ## Requirements
@@ -69,6 +70,11 @@ Regional search:
 python3 scripts/search.py "новости ИИ" --region 213 --type SEARCH_TYPE_RU
 ```
 
+The CLI exits non-zero for unrecovered submission HTTP errors, polling exhaustion,
+completed-operation errors, and invalid operation payloads. Expected `SearchError`
+diagnostics omit response bodies and credentials. A successful search with no
+matches exits with status 0 and returns the normal empty-result output.
+
 ## Python API
 
 ```python
@@ -106,6 +112,14 @@ responses, sanitized failures, and CLI exit codes. Run only this suite with:
 
 ```bash
 python3 -m unittest discover -s scripts -p test_fallback.py -v
+```
+
+The same regression command also discovers `test_operations.py`, which covers
+polling exhaustion, transient recovery, operation errors, malformed payloads, and
+safe CLI failures. Run it separately with:
+
+```bash
+python3 -m unittest discover -s scripts -p test_operations.py -v
 ```
 
 Fallback policy and troubleshooting links are documented in `SKILL.md` and

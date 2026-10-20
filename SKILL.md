@@ -75,6 +75,17 @@ If both attempts fail, check these separately:
 A service incident or account/balance problem is a possible troubleshooting path,
 not a diagnosis established by HTTP 429. See `references/api.md` for endpoint details.
 
+## Operation Errors
+
+Asynchronous operations retain the existing ten polling attempts and retry timing.
+Exhausted HTTP failures, operations that never complete, completed-operation errors,
+and missing or malformed operation results raise the same `SearchError` used by
+the fallback path. The CLI exits 1 without a success payload, raw service bodies,
+resource identifiers, or a traceback for these expected failures, even with `--verbose`.
+A failed page does not silently become a partial successful search. Valid empty
+responses remain successful. Polling HTTP 429 does not trigger synchronous fallback;
+only the initial asynchronous submission HTTP 429 does.
+
 ## Working Style
 
 Prefer `--format json` if another tool or script will consume the results.

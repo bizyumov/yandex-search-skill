@@ -213,9 +213,9 @@ def run_all() -> bool:
             failed += 1
 
     print(f"\nResults: {passed} passed, {failed} failed, {passed + failed} total")
-    suite = unittest.defaultTestLoader.discover(str(SCRIPT_DIR), pattern="test_fallback.py")
-    fallback_result = unittest.TextTestRunner(verbosity=2).run(suite)
-    return failed == 0 and fallback_result.wasSuccessful()
+    suite = unittest.defaultTestLoader.discover(str(SCRIPT_DIR), pattern="test_*.py")
+    integration_result = unittest.TextTestRunner(verbosity=2).run(suite)
+    return failed == 0 and integration_result.wasSuccessful()
 
 
 if __name__ == "__main__":

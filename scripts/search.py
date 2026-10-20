@@ -41,6 +41,18 @@ class SearchError(RuntimeError):
     """Search failure with a diagnostic safe to display without a traceback."""
 
 
+def _decode_search_response(payload: Any) -> str:
+    """Validate the same search payload in sync and completed-operation replies."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("rawData"), str):
+        raise ValueError("Missing rawData")
+    xml = base64.b64decode(payload["rawData"], validate=True).decode("utf-8")
+    root = ET.fromstring(xml)
+    if (root.tag != "yandexsearch" or root.find("response") is None
+            or root.find(".//error") is not None):
+        raise ValueError("Invalid search XML")
+    return xml
+
+
 async def _sync_fallback(session: aiohttp.ClientSession, url: str, body: Dict) -> str:
     """Try this page once, retaining the initial 429 in every failure diagnostic."""
     prefix = (
@@ -52,14 +64,7 @@ async def _sync_fallback(session: aiohttp.ClientSession, url: str, body: Dict) -
             if resp.status != 200:
                 raise SearchError(f"{prefix}returned HTTP {resp.status}.")
             payload = await resp.json()
-        if not isinstance(payload, dict) or not isinstance(payload.get("rawData"), str):
-            raise ValueError("Missing rawData")
-        xml = base64.b64decode(payload["rawData"], validate=True).decode("utf-8")
-        root = ET.fromstring(xml)
-        if (root.tag != "yandexsearch" or root.find("response") is None
-                or root.find(".//error") is not None):
-            raise ValueError("Invalid search XML")
-        return xml
+        return _decode_search_response(payload)
     except (ValueError, ET.ParseError, aiohttp.ContentTypeError):
         raise SearchError(f"{prefix}returned an invalid search response.") from None
     except (aiohttp.ClientError, asyncio.TimeoutError):
@@ -133,18 +138,41 @@ async def _search_api(
             )
 
         for index, op_id in operations:
+            last_http_status: Optional[int] = None
             for _attempt in range(10):
                 async with session.get(f"{operations_api_base}/operations/{op_id}") as resp:
                     if resp.status != 200:
+                        last_http_status = resp.status
                         await asyncio.sleep(1)
                         continue
-                    operation = await resp.json()
+                    last_http_status = None
+                    try:
+                        operation = await resp.json()
+                    except (ValueError, aiohttp.ContentTypeError):
+                        raise SearchError("Yandex Search returned an invalid operation response.") from None
+                    if not isinstance(operation, dict):
+                        raise SearchError("Yandex Search returned an invalid operation response.")
                     if operation.get("done"):
-                        xml_results[index] = base64.b64decode(
-                            operation["response"]["rawData"]
-                        ).decode("utf-8")
+                        if operation.get("error") is not None:
+                            raise SearchError("Yandex Search operation failed.")
+                        response = operation.get("response")
+                        if not isinstance(response, dict) or not response.get("rawData"):
+                            raise SearchError("Yandex Search operation returned no response payload.")
+                        try:
+                            xml_results[index] = _decode_search_response(response)
+                        except (ValueError, ET.ParseError):
+                            raise SearchError(
+                                "Yandex Search operation returned an invalid response payload."
+                            ) from None
                         break
                 await asyncio.sleep(1)
+            else:
+                if last_http_status is not None:
+                    raise SearchError(
+                        "Yandex Search operation polling failed after 10 attempts "
+                        f"(last HTTP {last_http_status})."
+                    )
+                raise SearchError("Yandex Search operation did not complete after 10 attempts.")
 
         parsed = []
         for xml in xml_results:
