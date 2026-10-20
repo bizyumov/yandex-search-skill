@@ -37,8 +37,38 @@ DEFAULT_SEARCH_API_BASE = "https://searchapi.api.cloud.yandex.net"
 DEFAULT_OPERATIONS_API_BASE = "https://operation.api.cloud.yandex.net"
 
 
-class YandexSearchAPIError(RuntimeError):
-    """A sanitized Yandex Search API failure safe to show to CLI users."""
+class SearchError(RuntimeError):
+    """Search failure with a diagnostic safe to display without a traceback."""
+
+
+def _decode_search_response(payload: Any) -> str:
+    """Validate the same search payload in sync and completed-operation replies."""
+    if not isinstance(payload, dict) or not isinstance(payload.get("rawData"), str):
+        raise ValueError("Missing rawData")
+    xml = base64.b64decode(payload["rawData"], validate=True).decode("utf-8")
+    root = ET.fromstring(xml)
+    if (root.tag != "yandexsearch" or root.find("response") is None
+            or root.find(".//error") is not None):
+        raise ValueError("Invalid search XML")
+    return xml
+
+
+async def _sync_fallback(session: aiohttp.ClientSession, url: str, body: Dict) -> str:
+    """Try this page once, retaining the initial 429 in every failure diagnostic."""
+    prefix = (
+        "Yandex Search failed: asynchronous submission returned HTTP 429; "
+        "synchronous fallback "
+    )
+    try:
+        async with session.post(url, json=body) as resp:
+            if resp.status != 200:
+                raise SearchError(f"{prefix}returned HTTP {resp.status}.")
+            payload = await resp.json()
+        return _decode_search_response(payload)
+    except (ValueError, ET.ParseError, aiohttp.ContentTypeError):
+        raise SearchError(f"{prefix}returned an invalid search response.") from None
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        raise SearchError(f"{prefix}failed with a transport error.") from None
 
 
 def _load_api_bases() -> tuple[str, str]:
@@ -60,7 +90,7 @@ async def _search_api(
     family_mode: str = "FAMILY_MODE_MODERATE",
     region: Optional[int] = None,
 ) -> List[Dict]:
-    """Execute async search against Yandex Cloud Search API v2."""
+    """Submit async searches, recovering submission HTTP 429 via sync search."""
     if pages_to_fetch is None:
         pages_to_fetch = [0]
 
@@ -69,7 +99,8 @@ async def _search_api(
 
     async with aiohttp.ClientSession(headers=headers) as session:
         operations = []
-        for page in pages_to_fetch:
+        xml_results: List[Optional[str]] = [None] * len(pages_to_fetch)
+        for index, page in enumerate(pages_to_fetch):
             body = {
                 "query": {
                     "search_type": search_type,
@@ -95,57 +126,58 @@ async def _search_api(
                 body["region"] = str(region)
 
             async with session.post(f"{search_api_base}/v2/web/searchAsync", json=body) as resp:
-                if resp.status != 200:
-                    await resp.read()
-                    raise YandexSearchAPIError(
-                        f"Yandex Search request failed with HTTP {resp.status}"
+                if resp.status == 200:
+                    operations.append((index, (await resp.json())["id"]))
+                    continue
+                if resp.status != 429:
+                    raise SearchError(
+                        f"Yandex Search failed: asynchronous submission returned HTTP {resp.status}."
                     )
-                operations.append((await resp.json())["id"])
+            xml_results[index] = await _sync_fallback(
+                session, f"{search_api_base}/v2/web/search", body
+            )
 
-        xml_results = []
-        for op_id in operations:
-            completed = False
-            last_http_status = None
+        for index, op_id in operations:
+            last_http_status: Optional[int] = None
             for _attempt in range(10):
                 async with session.get(f"{operations_api_base}/operations/{op_id}") as resp:
                     if resp.status != 200:
                         last_http_status = resp.status
-                        await resp.read()
                         await asyncio.sleep(1)
                         continue
                     last_http_status = None
-                    operation = await resp.json()
+                    try:
+                        operation = await resp.json()
+                    except (ValueError, aiohttp.ContentTypeError):
+                        raise SearchError("Yandex Search returned an invalid operation response.") from None
+                    if not isinstance(operation, dict):
+                        raise SearchError("Yandex Search returned an invalid operation response.")
                     if operation.get("done"):
-                        if operation.get("error"):
-                            raise YandexSearchAPIError("Yandex Search operation failed")
+                        if operation.get("error") is not None:
+                            raise SearchError("Yandex Search operation failed.")
                         response = operation.get("response")
-                        raw_data = response.get("rawData") if isinstance(response, dict) else None
-                        if not raw_data:
-                            raise YandexSearchAPIError(
-                                "Yandex Search operation returned no response payload"
-                            )
+                        if not isinstance(response, dict) or not response.get("rawData"):
+                            raise SearchError("Yandex Search operation returned no response payload.")
                         try:
-                            xml_results.append(base64.b64decode(raw_data).decode("utf-8"))
-                        except (ValueError, UnicodeDecodeError) as exc:
-                            raise YandexSearchAPIError(
-                                "Yandex Search operation returned an invalid response payload"
-                            ) from exc
-                        completed = True
+                            xml_results[index] = _decode_search_response(response)
+                        except (ValueError, ET.ParseError):
+                            raise SearchError(
+                                "Yandex Search operation returned an invalid response payload."
+                            ) from None
                         break
                 await asyncio.sleep(1)
-            if not completed:
+            else:
                 if last_http_status is not None:
-                    raise YandexSearchAPIError(
+                    raise SearchError(
                         "Yandex Search operation polling failed after 10 attempts "
-                        f"(last HTTP {last_http_status})"
+                        f"(last HTTP {last_http_status})."
                     )
-                raise YandexSearchAPIError(
-                    "Yandex Search operation did not complete after 10 attempts"
-                )
+                raise SearchError("Yandex Search operation did not complete after 10 attempts.")
 
         parsed = []
         for xml in xml_results:
-            parsed.extend(_parse_xml_results(xml))
+            if xml is not None:
+                parsed.extend(_parse_xml_results(xml))
         return parsed
 
 
@@ -358,6 +390,9 @@ def main() -> None:
             verbose=args.verbose,
         )
         print(format_output(results, args.query, args.format))
+    except SearchError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
     except ValueError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         sys.exit(1)

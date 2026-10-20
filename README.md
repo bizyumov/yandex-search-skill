@@ -17,7 +17,9 @@ yandex-search-skill/
 │   └── regions.md
 └── scripts/
     ├── search.py
-    └── test_search.py
+    ├── test_search.py
+    ├── test_fallback.py
+    └── test_operations.py
 ```
 
 ## Requirements
@@ -68,7 +70,10 @@ Regional search:
 python3 scripts/search.py "новости ИИ" --region 213 --type SEARCH_TYPE_RU
 ```
 
-The CLI exits non-zero for API submission, polling, and completed-operation failures. Error output is sanitized and does not include response bodies or credentials. A successful search with no matches exits with status 0 and returns the normal empty-result output.
+The CLI exits non-zero for unrecovered submission HTTP errors, polling exhaustion,
+completed-operation errors, and invalid operation payloads. Expected `SearchError`
+diagnostics omit response bodies and credentials. A successful search with no
+matches exits with status 0 and returns the normal empty-result output.
 
 ## Python API
 
@@ -99,6 +104,26 @@ python3 scripts/test_search.py
 ```
 
 The live API test is automatically skipped unless `YANDEX_SEARCH_API_KEY` and `YANDEX_CLOUD_FOLDER_ID` are set.
+
+The same command also runs deterministic HTTP integration tests against a local
+server, without live credentials. These cover async HTTP 429 recovery through the
+synchronous endpoint, unchanged search parameters, mixed-page ordering, malformed
+responses, sanitized failures, and CLI exit codes. Run only this suite with:
+
+```bash
+python3 -m unittest discover -s scripts -p test_fallback.py -v
+```
+
+The same regression command also discovers `test_operations.py`, which covers
+polling exhaustion, transient recovery, operation errors, malformed payloads, and
+safe CLI failures. Run it separately with:
+
+```bash
+python3 -m unittest discover -s scripts -p test_operations.py -v
+```
+
+Fallback policy and troubleshooting links are documented in `SKILL.md` and
+`references/api.md`.
 
 ## Validation
 
