@@ -37,6 +37,35 @@ DEFAULT_SEARCH_API_BASE = "https://searchapi.api.cloud.yandex.net"
 DEFAULT_OPERATIONS_API_BASE = "https://operation.api.cloud.yandex.net"
 
 
+class SearchError(RuntimeError):
+    """Search failure with a diagnostic safe to display without a traceback."""
+
+
+async def _sync_fallback(session: aiohttp.ClientSession, url: str, body: Dict) -> str:
+    """Try this page once, retaining the initial 429 in every failure diagnostic."""
+    prefix = (
+        "Yandex Search failed: asynchronous submission returned HTTP 429; "
+        "synchronous fallback "
+    )
+    try:
+        async with session.post(url, json=body) as resp:
+            if resp.status != 200:
+                raise SearchError(f"{prefix}returned HTTP {resp.status}.")
+            payload = await resp.json()
+        if not isinstance(payload, dict) or not isinstance(payload.get("rawData"), str):
+            raise ValueError("Missing rawData")
+        xml = base64.b64decode(payload["rawData"], validate=True).decode("utf-8")
+        root = ET.fromstring(xml)
+        if (root.tag != "yandexsearch" or root.find("response") is None
+                or root.find(".//error") is not None):
+            raise ValueError("Invalid search XML")
+        return xml
+    except (ValueError, ET.ParseError, aiohttp.ContentTypeError):
+        raise SearchError(f"{prefix}returned an invalid search response.") from None
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        raise SearchError(f"{prefix}failed with a transport error.") from None
+
+
 def _load_api_bases() -> tuple[str, str]:
     return (
         os.getenv("YANDEX_SEARCH_API_BASE", DEFAULT_SEARCH_API_BASE),
@@ -56,7 +85,7 @@ async def _search_api(
     family_mode: str = "FAMILY_MODE_MODERATE",
     region: Optional[int] = None,
 ) -> List[Dict]:
-    """Execute async search against Yandex Cloud Search API v2."""
+    """Submit async searches, recovering submission HTTP 429 via sync search."""
     if pages_to_fetch is None:
         pages_to_fetch = [0]
 
@@ -65,7 +94,8 @@ async def _search_api(
 
     async with aiohttp.ClientSession(headers=headers) as session:
         operations = []
-        for page in pages_to_fetch:
+        xml_results: List[Optional[str]] = [None] * len(pages_to_fetch)
+        for index, page in enumerate(pages_to_fetch):
             body = {
                 "query": {
                     "search_type": search_type,
@@ -91,14 +121,18 @@ async def _search_api(
                 body["region"] = str(region)
 
             async with session.post(f"{search_api_base}/v2/web/searchAsync", json=body) as resp:
-                if resp.status != 200:
-                    error = await resp.text()
-                    logger.error("Request error: %s - %s", resp.status, error)
+                if resp.status == 200:
+                    operations.append((index, (await resp.json())["id"]))
                     continue
-                operations.append((await resp.json())["id"])
+                if resp.status != 429:
+                    raise SearchError(
+                        f"Yandex Search failed: asynchronous submission returned HTTP {resp.status}."
+                    )
+            xml_results[index] = await _sync_fallback(
+                session, f"{search_api_base}/v2/web/search", body
+            )
 
-        xml_results = []
-        for op_id in operations:
+        for index, op_id in operations:
             for _attempt in range(10):
                 async with session.get(f"{operations_api_base}/operations/{op_id}") as resp:
                     if resp.status != 200:
@@ -106,15 +140,16 @@ async def _search_api(
                         continue
                     operation = await resp.json()
                     if operation.get("done"):
-                        xml_results.append(
-                            base64.b64decode(operation["response"]["rawData"]).decode("utf-8")
-                        )
+                        xml_results[index] = base64.b64decode(
+                            operation["response"]["rawData"]
+                        ).decode("utf-8")
                         break
                 await asyncio.sleep(1)
 
         parsed = []
         for xml in xml_results:
-            parsed.extend(_parse_xml_results(xml))
+            if xml is not None:
+                parsed.extend(_parse_xml_results(xml))
         return parsed
 
 
@@ -327,6 +362,9 @@ def main() -> None:
             verbose=args.verbose,
         )
         print(format_output(results, args.query, args.format))
+    except SearchError as exc:
+        print(str(exc), file=sys.stderr)
+        sys.exit(1)
     except ValueError as exc:
         print(f"Configuration error: {exc}", file=sys.stderr)
         sys.exit(1)
